@@ -1,0 +1,146 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+
+# Create VPC
+resource "aws_vpc" "my_vpc" {
+  cidr_block = "10.0.0.0/16"
+}
+
+# Create Subnet
+resource "aws_subnet" "my_subnet" {
+  vpc_id            = aws_vpc.my_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-west-2a"
+}
+
+# Create Internet Gateway
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.my_vpc.id
+}
+
+# Create Route Table
+resource "aws_route_table" "my_route_table" {
+  vpc_id = aws_vpc.my_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+}
+
+# Associate Route Table with Subnet
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.my_subnet.id
+  route_table_id = aws_route_table.my_route_table.id
+}
+
+# Create Security Group
+resource "aws_security_group" "allow_ssh" {
+  name        = "allow_ssh"
+  description = "Allow SSH inbound traffic"
+  vpc_id      = aws_vpc.my_vpc.id
+
+  ingress {
+    description = "SSH from my IP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # Replace with your IP in real setup
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Create EC2 Instance (t2.small)
+resource "aws_instance" "my_instance" {
+  ami                         = "ami-005e54dee72cc1d00" # Amazon Linux 2 (us-west-2)
+  instance_type               = "t2.small"
+  subnet_id                   = aws_subnet.my_subnet.id
+  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+  associate_public_ip_address = true
+
+  tags = {
+    Name = "MyT2SmallInstance"
+  }
+}
+
+
+===============================================================================================================================================================================================================================================================
+for default VPCs, subnets, and gateways
+--------------------------------------------
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.0"
+    }
+  }
+}
+
+# Configure the AWS Provider
+provider "aws" {
+  region = "ap-south-1"  # Mumbai
+}
+
+# Lookup default VPC
+data "aws_vpc" "default" {
+  default = true
+}
+
+# Lookup default subnet(s) in the default VPC
+data "aws_subnet_ids" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
+# Create a security group that allows SSH from anywhere (for practice)
+resource "aws_security_group" "allow_ssh" {
+  name        = "allow_ssh"
+  description = "Allow SSH inbound traffic"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH from anywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Create EC2 instance (t2.small) in default subnet
+resource "aws_instance" "my_instance" {
+  ami                         = "ami-005e54dee72cc1d00"  # Amazon Linux 2 for ap-south-1
+  instance_type               = "t2.small"
+  subnet_id                   = data.aws_subnet_ids.default.ids[0]
+  vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+  associate_public_ip_address = true
+
+  tags = {
+    Name = "MyT2SmallInstance"
+  }
+}
+
+======================================================================================================================================================================================
+
